@@ -1,23 +1,39 @@
-# Teravox
+# Teravox Engine
 
-Teravox is a custom C-based 3D world editor and rendering engine.
+A 3D world builder engine built from scratch in C.
 
-## Features Planned
-- ECS architecture
-- Scene hierarchy editor
-- Gizmo manipulation
-- Primitive mesh generation
-- Scene serialization
-- Audio system
-- Real-time renderer
-- Object inspector
-- Selection system
+## Current Status — v0.1 Wireframe
+- Custom math library (Vec2, Vec3, Vec4, Mat4x4)
+- Perspective projection — MVP matrix pipeline
+- FPS camera — WASD + mouse look
+- Place cubes — press 1
+- Remove last cube — press 2
+- Variable cube size — UP/DOWN arrow keys
+- Ground grid
+- Built with SDL2
 
-## Tech
-- C
-- SDL2
-- cimgui
-- miniaudio
+## Controls
+| Key | Action |
+|-----|--------|
+| WASD | Move camera |
+| Mouse | Look around |
+| Space | Move up |
+| Left Shift | Move down |
+| 1 | Place cube |
+| 2 | Remove last cube |
+| UP arrow | Increase cube size |
+| DOWN arrow | Decrease cube size |
+| ESC | Quit |
 
-## Goal
-To build a fully custom lightweight 3D world editor from scratch.
+## Build
+```bash
+gcc main.c -o teravox -lSDL2 -lm
+```
+
+## Roadmap
+- Triangle rasterization
+- All 10 primitives
+- Flat shading + lighting
+- ImGui editor panels
+- Save/load world files
+- Physics sandbox
