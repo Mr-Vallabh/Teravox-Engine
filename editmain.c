@@ -1,3 +1,7 @@
+//This was the code given by claude originally i am going to add a new shape inside it 
+// like a cuboid ok 
+
+
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include "src/core/tv_math.h"
@@ -9,6 +13,9 @@
 #define MAX_VERTICES  8
 #define MAX_EDGES     12
 #define MAX_OBJECTS   1000
+#define CURRENT_CUBE_SIZE 2.0f
+#define MIN_CUBE_SIZE 0.01f
+#define MAX_CUBE_SIZE 10.0f
 
 // ─────────────────────────────────────────
 // Object
@@ -265,9 +272,12 @@ void camera_init(Camera* cam) {
 void camera_update(Camera* cam, const Uint8* keys) {
 
     Vec3 forward;
-    forward.x =  sinf(cam->yaw);
-    forward.y =  0.0f;
-    forward.z = -cosf(cam->yaw);
+
+    forward.x = sinf(cam->yaw) * cosf(cam->pitch);
+    forward.y = sinf(cam->pitch);
+    forward.z = -cosf(cam->yaw) * cosf(cam->pitch);
+
+    forward = vec3_normalize(forward);
 
     Vec3 right;
     right.x =  cosf(cam->yaw);
@@ -276,14 +286,19 @@ void camera_update(Camera* cam, const Uint8* keys) {
 
     if(keys[SDL_SCANCODE_W])
         cam->position = vec3_add(cam->position, vec3_scale(forward, cam->speed));
+
     if(keys[SDL_SCANCODE_S])
         cam->position = vec3_sub(cam->position, vec3_scale(forward, cam->speed));
+
     if(keys[SDL_SCANCODE_A])
         cam->position = vec3_sub(cam->position, vec3_scale(right, cam->speed));
+
     if(keys[SDL_SCANCODE_D])
         cam->position = vec3_add(cam->position, vec3_scale(right, cam->speed));
+
     if(keys[SDL_SCANCODE_SPACE])
         cam->position.y += cam->speed;
+
     if(keys[SDL_SCANCODE_LSHIFT])
         cam->position.y -= cam->speed;
 }
@@ -297,10 +312,106 @@ Vec3 camera_getTarget(Camera* cam) {
 }
 
 // ─────────────────────────────────────────
+// Save world to .tvw file
+// ─────────────────────────────────────────
+
+void scene_save(Scene * s,const char * filename){
+
+    FILE * f = fopen(filename,"w");
+
+    if(!f){
+        TV_ERROR("Failed to save world");
+        return ;
+    }
+
+    // write object count first
+    fprintf(f,"%d\n",s->count);
+
+    // write each object 
+
+    for(int i = 0;i < s->count;i += 1){
+        
+        /// we need to store position and size
+        // size = distance between two opposite vertices
+        // vertex[6] - vertex[0] gives us the full diagonal
+        // but simpler - store the x extent as size
+
+        float size = s->objects[i].vertices[1].x - s->objects[i].vertices[0].x;
+
+        fprintf(f,"%.4f %.4f %.4f %.4f\n",
+            s->objects[i].position.x,
+            s->objects[i].position.y,
+            s->objects[i].position.z,
+            size
+        );
+    }
+    fclose(f);
+    TV_LOG("World Saved !!");
+    printf("World saved to %s\n",filename);
+}
+
+// ─────────────────────────────────────────
+// Load world from .tvw file
+// ─────────────────────────────────────────
+
+void scene_load(Scene * s,const char * filename){
+
+    FILE * f = fopen(filename,"r");
+
+    if(!f){
+        TV_ERROR("Save file not found");
+        return ;
+    }
+
+    // clear current scene
+    s->count = 0;
+
+    int count = 0;
+    fscanf(f,"%d",&count);
+
+    for(int i = 0;i < count;i += 1){
+
+        float x, y, z, size;
+        fscanf(f,"%f %f %f %f",&x,&y,&z,&size);
+
+        Vec3 pos = vec3(x,y,z);
+        scene_addCube(s,pos,size);
+    }
+
+    fclose(f);
+    TV_LOG("World Loaded");
+    printf("World loaded from %s - %d objects\n",filename,count);
+}
+
+// ─────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
+
+    float currCubeSize = CURRENT_CUBE_SIZE;
+    char worldfile[128] = "world.tvw";
+
+    printf("Teravox Engine v1\n");
+    printf("-----------------\n");
+    printf("Enter initial cube size (0.01 to 10.0): ");
+    fflush(stdout);
+    scanf("%f",&currCubeSize);
+    fflush(stdin);
+
+    printf("Load existing world? (y/n) : ");
+    char choice;
+    scanf("%c",&choice);
+    fflush(stdin);
+
+    if(choice == 'y' || choice == 'Y'){
+        printf("Enter filename (default : world.tvw):");
+        scanf("%s",worldfile);
+    }
+
+    // clamp cube size
+    if(currCubeSize < MIN_CUBE_SIZE)currCubeSize = MIN_CUBE_SIZE;
+    if(currCubeSize >  MAX_CUBE_SIZE)currCubeSize = MAX_CUBE_SIZE;
 
     if(SDL_Init(SDL_INIT_VIDEO) < 0) {
         TV_ERROR("SDL init failed");
@@ -339,7 +450,12 @@ int main(int argc, char* argv[]) {
     // init scene
     Scene scene;
     scene_init(&scene);
-    scene_addCube(&scene, vec3(0, 0, 0), 2.0f);
+    
+    if(choice == 'y' || choice == 'Y'){
+        scene_load(&scene,worldfile);
+    }else{
+        scene_addCube(&scene,vec3(0, 0, 0),currCubeSize);
+    }
 
     // init camera
     Camera cam;
@@ -364,14 +480,61 @@ int main(int argc, char* argv[]) {
 
                 // press 1 — place cube at camera position
                 if(event.key.keysym.sym == SDLK_1) {
-                    Vec3 placePos = cam.position;
-                    placePos.y   = 0.0f;
-                    scene_addCube(&scene, placePos, 2.0f);
+
+                    Vec3 forward;
+
+                    forward.x = sinf(cam.yaw) * cosf(cam.pitch);
+                    forward.y = sinf(cam.pitch);
+                    forward.z = -cosf(cam.yaw) * cosf(cam.pitch);
+
+                    // normalize direction
+                    forward = vec3_normalize(forward);
+
+                    // spawn distance from camera
+                    float spawnDistance = 1.5f;
+
+                    // final cube position
+                    Vec3 placePos = vec3_add(
+                        cam.position,
+                        vec3_scale(forward, spawnDistance)
+                    );
+
+                    scene_addCube(&scene, placePos, currCubeSize);
                 }
 
                 // press 2 — remove last cube
                 if(event.key.keysym.sym == SDLK_2) {
                     scene_removeLast(&scene);
+                }
+
+                //press up arrow to increase cube size
+                if(event.key.keysym.sym == SDLK_UP){
+                    if(currCubeSize < MAX_CUBE_SIZE){
+                        currCubeSize += 0.05f;
+                    }
+                }
+
+                //press down arrow to decrease cube size
+                if(event.key.keysym.sym == SDLK_DOWN){
+                    if(currCubeSize > MIN_CUBE_SIZE){
+                        currCubeSize -= 0.05f;
+                    }
+                }
+
+                //Ctrl + S - save world
+                if(event.key.keysym.sym == SDLK_s){
+                    const Uint8* modkeys = SDL_GetKeyboardState(NULL);
+                    if(modkeys[SDL_SCANCODE_LCTRL] || (modkeys[SDL_SCANCODE_RCTRL])){
+                        scene_save(&scene,"world.tvw");
+                    }
+                }
+
+                // Ctrl + L - load world
+                if(event.key.keysym.sym == SDLK_l){
+                    const Uint8* modkeys = SDL_GetKeyboardState(NULL);
+                    if(modkeys[SDL_SCANCODE_LCTRL] || modkeys[SDL_SCANCODE_RCTRL]){
+                        scene_load(&scene,"world.tvw");
+                    }
                 }
             }
 
